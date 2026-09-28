@@ -38,6 +38,11 @@ public class EmergencyEvent {
     @Column(nullable = false, length = 16)
     private Priority priority;
 
+    /** 急救类型，用于匹配医院可接收类型与床位预留。 */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 32)
+    private EmergencyType emergencyType = EmergencyType.GENERAL;
+
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "event_required_capability", joinColumns = @JoinColumn(name = "event_id"))
     @Column(name = "capability", nullable = false)
@@ -58,9 +63,16 @@ public class EmergencyEvent {
 
     public EmergencyEvent(String location, String serviceArea, Priority priority,
                           Set<String> requiredCapabilities, Instant createdAt) {
+        this(location, serviceArea, priority, EmergencyType.GENERAL, requiredCapabilities, createdAt);
+    }
+
+    public EmergencyEvent(String location, String serviceArea, Priority priority,
+                          EmergencyType emergencyType, Set<String> requiredCapabilities,
+                          Instant createdAt) {
         this.location = location;
         this.serviceArea = serviceArea;
         this.priority = priority;
+        this.emergencyType = emergencyType;
         this.requiredCapabilities = new HashSet<>(requiredCapabilities);
         this.createdAt = createdAt;
     }
@@ -79,6 +91,10 @@ public class EmergencyEvent {
 
     public Priority getPriority() {
         return priority;
+    }
+
+    public EmergencyType getEmergencyType() {
+        return emergencyType;
     }
 
     public Set<String> getRequiredCapabilities() {

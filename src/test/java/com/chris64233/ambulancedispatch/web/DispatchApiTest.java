@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.chris64233.ambulancedispatch.TestFixtures;
+import com.chris64233.ambulancedispatch.domain.EmergencyType;
 import com.chris64233.ambulancedispatch.domain.Priority;
 import com.chris64233.ambulancedispatch.service.DispatchService;
 import com.chris64233.ambulancedispatch.dto.DispatchRequest;
@@ -24,6 +25,8 @@ import org.springframework.test.web.servlet.MockMvc;
 class DispatchApiTest {
 
     private static final String AREA = "朝阳区";
+    private static final Set<String> CAPS = Set.of("AED", "VENTILATOR");
+    private static final Set<EmergencyType> TYPES = Set.of(EmergencyType.GENERAL);
     private static final String CAPS_JSON = "[\"AED\",\"VENTILATOR\"]";
 
     @Autowired private MockMvc mockMvc;
@@ -34,21 +37,28 @@ class DispatchApiTest {
         return "BIZ-" + UUID.randomUUID();
     }
 
+    private long hospital() {
+        return fixtures.hospital("医院" + UUID.randomUUID(), TYPES, 10);
+    }
+
     @Test
     void full_dispatch_preempt_arrive_complete_flow() throws Exception {
         long amb = fixtures.ambulance("京B1", Set.of(AREA), Set.of("AED", "VENTILATOR"));
         long crew = fixtures.crew("B一组", Set.of("AED", "VENTILATOR"), true);
         long lowEvent = fixtures.event("国贸", AREA, Priority.LOW, Set.of("AED", "VENTILATOR"));
         long highEvent = fixtures.event("三里屯", AREA, Priority.CRITICAL, Set.of("AED", "VENTILATOR"));
+        long hospital1 = hospital();
+        long hospital2 = hospital();
 
         String dispatchBiz = bizNo();
         String lowDispatchJson = mockMvc.perform(post("/api/dispatches")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"bizNo":"%s","eventId":%d,"ambulanceId":%d,"crewId":%d}
-                                """.formatted(dispatchBiz, lowEvent, amb, crew)))
+                                {"bizNo":"%s","eventId":%d,"ambulanceId":%d,"crewId":%d,"hospitalId":%d}
+                                """.formatted(dispatchBiz, lowEvent, amb, crew, hospital1)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.status").value("EN_ROUTE"))
+                .andExpect(jsonPath("$.hospitalId").value(hospital1))
                 .andExpect(jsonPath("$.replayed").value(false))
                 .andReturn().getResponse().getContentAsString();
         long lowDispatchId = Long.parseLong(
@@ -58,8 +68,8 @@ class DispatchApiTest {
         mockMvc.perform(post("/api/dispatches")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"bizNo":"%s","eventId":%d,"ambulanceId":%d,"crewId":%d}
-                                """.formatted(dispatchBiz, lowEvent, amb, crew)))
+                                {"bizNo":"%s","eventId":%d,"ambulanceId":%d,"crewId":%d,"hospitalId":%d}
+                                """.formatted(dispatchBiz, lowEvent, amb, crew, hospital1)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").value(lowDispatchId))
                 .andExpect(jsonPath("$.replayed").value(true));
@@ -69,10 +79,11 @@ class DispatchApiTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"bizNo":"%s","newEventId":%d,"targetDispatchId":%d,
-                                 "ambulanceId":%d,"crewId":%d}
-                                """.formatted(bizNo(), highEvent, lowDispatchId, amb, crew)))
+                                 "ambulanceId":%d,"crewId":%d,"hospitalId":%d}
+                                """.formatted(bizNo(), highEvent, lowDispatchId, amb, crew, hospital2)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.preemptedDispatchId").value(lowDispatchId))
+                .andExpect(jsonPath("$.hospitalId").value(hospital2))
                 .andReturn().getResponse().getContentAsString();
         long highDispatchId = Long.parseLong(
                 com.jayway.jsonpath.JsonPath.read(preemptJson, "$.id").toString());
@@ -80,6 +91,9 @@ class DispatchApiTest {
         mockMvc.perform(post("/api/dispatches/{id}/arrive", highDispatchId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("ON_SCENE"));
+        mockMvc.perform(post("/api/dispatches/{id}/arrive-hospital", highDispatchId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("AT_HOSPITAL"));
         mockMvc.perform(post("/api/dispatches/{id}/complete", highDispatchId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("COMPLETED"));
@@ -88,16 +102,20 @@ class DispatchApiTest {
         mockMvc.perform(get("/api/events/{id}/dispatch-detail", highEvent))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.currentDispatch").doesNotExist())
-                .andExpect(jsonPath("$.dispatches[0].status").value("COMPLETED"));
+                .andExpect(jsonPath("$.dispatches[0].status").value("COMPLETED"))
+                .andExpect(jsonPath("$.reservations.length()").value(1))
+                .andExpect(jsonPath("$.timeline.length()").value(6));
         mockMvc.perform(get("/api/ambulances/{id}/timeline", amb))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(5))
+                .andExpect(jsonPath("$.length()").value(6))
                 .andExpect(jsonPath("$[0].action").value("ASSIGNED"))
-                .andExpect(jsonPath("$[4].action").value("RELEASED"));
+                .andExpect(jsonPath("$[4].action").value("ARRIVED_HOSPITAL"))
+                .andExpect(jsonPath("$[5].action").value("RELEASED"));
         mockMvc.perform(get("/api/dispatches/{id}/preemption-chain", highDispatchId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(2))
-                .andExpect(jsonPath("$[1].eventPriority").value("CRITICAL"));
+                .andExpect(jsonPath("$[1].eventPriority").value("CRITICAL"))
+                .andExpect(jsonPath("$[1].hospitalId").value(hospital2));
     }
 
     @Test
@@ -106,14 +124,15 @@ class DispatchApiTest {
         long crew = fixtures.crew("B二组", Set.of("AED"), true);
         long event1 = fixtures.event("国贸1", AREA, Priority.NORMAL, Set.of("AED"));
         long event2 = fixtures.event("国贸2", AREA, Priority.NORMAL, Set.of("AED"));
+        long hos = hospital();
 
-        dispatchService.dispatch(new DispatchRequest(bizNo(), event1, amb, crew));
+        dispatchService.dispatch(new DispatchRequest(bizNo(), event1, amb, crew, hos));
 
         mockMvc.perform(post("/api/dispatches")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"bizNo":"%s","eventId":%d,"ambulanceId":%d,"crewId":%d}
-                                """.formatted(bizNo(), event2, amb, crew)))
+                                {"bizNo":"%s","eventId":%d,"ambulanceId":%d,"crewId":%d,"hospitalId":%d}
+                                """.formatted(bizNo(), event2, amb, crew, hos)))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("RESOURCE_UNAVAILABLE"))
                 .andExpect(jsonPath("$.status").value(409))
@@ -129,15 +148,16 @@ class DispatchApiTest {
         long crew = fixtures.crew("B三组", Set.of("AED"), true);
         long event1 = fixtures.event("国贸1", AREA, Priority.NORMAL, Set.of("AED"));
         long event2 = fixtures.event("国贸2", AREA, Priority.NORMAL, Set.of("AED"));
+        long hos = hospital();
         String bizNo = bizNo();
 
-        dispatchService.dispatch(new DispatchRequest(bizNo, event1, amb, crew));
+        dispatchService.dispatch(new DispatchRequest(bizNo, event1, amb, crew, hos));
 
         mockMvc.perform(post("/api/dispatches")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"bizNo":"%s","eventId":%d,"ambulanceId":%d,"crewId":%d}
-                                """.formatted(bizNo, event2, amb, crew)))
+                                {"bizNo":"%s","eventId":%d,"ambulanceId":%d,"crewId":%d,"hospitalId":%d}
+                                """.formatted(bizNo, event2, amb, crew, hos)))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("IDEMPOTENT_CONFLICT"));
     }
@@ -167,15 +187,15 @@ class DispatchApiTest {
         long lowEvent = fixtures.event("国贸", AREA, Priority.LOW, Set.of("AED"));
         long highEvent = fixtures.event("三里屯", AREA, Priority.CRITICAL, Set.of("AED"));
 
-        var low = dispatchService.dispatch(new DispatchRequest(bizNo(), lowEvent, amb, crew));
+        var low = dispatchService.dispatch(new DispatchRequest(bizNo(), lowEvent, amb, crew, hospital()));
         dispatchService.arrive(low.id());
 
         mockMvc.perform(post("/api/dispatches/preempt")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"bizNo":"%s","newEventId":%d,"targetDispatchId":%d,
-                                 "ambulanceId":%d,"crewId":%d}
-                                """.formatted(bizNo(), highEvent, low.id(), amb, crew)))
+                                 "ambulanceId":%d,"crewId":%d,"hospitalId":%d}
+                                """.formatted(bizNo(), highEvent, low.id(), amb, crew, hospital())))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("DISPATCH_ALREADY_ARRIVED"));
 

@@ -2,9 +2,14 @@ package com.chris64233.ambulancedispatch.web;
 
 import com.chris64233.ambulancedispatch.dto.DispatchRequest;
 import com.chris64233.ambulancedispatch.dto.DispatchResponse;
+import com.chris64233.ambulancedispatch.dto.DiversionRequest;
+import com.chris64233.ambulancedispatch.dto.DiversionResponse;
+import com.chris64233.ambulancedispatch.dto.DiversionTaskResponse;
 import com.chris64233.ambulancedispatch.dto.EventDispatchDetailResponse;
 import com.chris64233.ambulancedispatch.dto.PreemptRequest;
 import com.chris64233.ambulancedispatch.dto.PreemptionChainItemResponse;
+import com.chris64233.ambulancedispatch.dto.RejectRequest;
+import com.chris64233.ambulancedispatch.dto.RejectionResponse;
 import com.chris64233.ambulancedispatch.dto.TimelineEntryResponse;
 import com.chris64233.ambulancedispatch.service.DispatchService;
 import jakarta.validation.Valid;
@@ -18,7 +23,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 派遣、抢占、生命周期与查询接口。
+ * 派遣、抢占、生命周期、医院拒收、途中改派与查询接口。
  */
 @RestController
 public class DispatchController {
@@ -51,6 +56,11 @@ public class DispatchController {
         return dispatchService.arrive(id);
     }
 
+    @PostMapping("/api/dispatches/{id}/arrive-hospital")
+    public DispatchResponse arriveHospital(@PathVariable Long id) {
+        return dispatchService.arriveHospital(id);
+    }
+
     @PostMapping("/api/dispatches/{id}/complete")
     public DispatchResponse complete(@PathVariable Long id) {
         return dispatchService.complete(id);
@@ -61,7 +71,28 @@ public class DispatchController {
         return dispatchService.cancel(id);
     }
 
-    /** 事件派遣详情：当前进行中的派遣与全部派遣历史。 */
+    /** 目的医院拒收：记录原因、归还名额并生成改派任务，不释放车辆/救护组。 */
+    @PostMapping("/api/dispatches/{id}/reject")
+    @ResponseStatus(HttpStatus.CREATED)
+    public RejectionResponse reject(@PathVariable Long id,
+                                    @Valid @RequestBody RejectRequest request) {
+        return dispatchService.reject(id, request.reason());
+    }
+
+    /** 途中改派：新医院预留成功后释放原名额，失败时原目的地与派遣不变。 */
+    @PostMapping("/api/dispatches/divert")
+    @ResponseStatus(HttpStatus.CREATED)
+    public DiversionResponse divert(@Valid @RequestBody DiversionRequest request) {
+        return dispatchService.divert(request);
+    }
+
+    /** 待处理改派任务（医院拒收后生成）。 */
+    @GetMapping("/api/diversion-tasks")
+    public List<DiversionTaskResponse> pendingDiversionTasks() {
+        return dispatchService.listPendingDiversionTasks();
+    }
+
+    /** 事件完整详情：派遣资源、医院预留、历次改派、拒收原因与完整时间线。 */
     @GetMapping("/api/events/{eventId}/dispatch-detail")
     public EventDispatchDetailResponse eventDispatchDetail(@PathVariable Long eventId) {
         return dispatchService.getEventDispatchDetail(eventId);

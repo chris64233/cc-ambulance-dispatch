@@ -9,11 +9,13 @@ public record DispatchResponse(
         Long eventId,
         Long ambulanceId,
         Long crewId,
+        Long hospitalId,
         String status,
         Long preemptedDispatchId,
         Long preemptionRootId,
         Instant dispatchedAt,
         Instant arrivedAt,
+        Instant arrivedHospitalAt,
         Instant finishedAt,
         boolean replayed) {
 
@@ -28,11 +30,13 @@ public record DispatchResponse(
                 d.getEvent().getId(),
                 d.getAmbulance().getId(),
                 d.getCrew().getId(),
+                d.getDestinationHospital().getId(),
                 d.getStatus().name(),
                 d.getPreemptedDispatch() == null ? null : d.getPreemptedDispatch().getId(),
                 d.getPreemptionRoot().getId(),
                 d.getDispatchedAt(),
                 d.getArrivedAt(),
+                d.getArrivedHospitalAt(),
                 d.getFinishedAt(),
                 replayed);
     }

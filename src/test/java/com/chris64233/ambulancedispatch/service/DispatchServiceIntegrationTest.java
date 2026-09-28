@@ -10,8 +10,10 @@ import com.chris64233.ambulancedispatch.domain.AssignmentStatus;
 import com.chris64233.ambulancedispatch.domain.Crew;
 import com.chris64233.ambulancedispatch.domain.DispatchStatus;
 import com.chris64233.ambulancedispatch.domain.EmergencyEvent;
+import com.chris64233.ambulancedispatch.domain.EmergencyType;
 import com.chris64233.ambulancedispatch.domain.EventStatus;
 import com.chris64233.ambulancedispatch.domain.Priority;
+import com.chris64233.ambulancedispatch.domain.ReceivingStatus;
 import com.chris64233.ambulancedispatch.dto.DispatchRequest;
 import com.chris64233.ambulancedispatch.dto.DispatchResponse;
 import com.chris64233.ambulancedispatch.dto.EventDispatchDetailResponse;
@@ -24,6 +26,7 @@ import com.chris64233.ambulancedispatch.repository.AmbulanceRepository;
 import com.chris64233.ambulancedispatch.repository.CrewRepository;
 import com.chris64233.ambulancedispatch.repository.DispatchRepository;
 import com.chris64233.ambulancedispatch.repository.EmergencyEventRepository;
+import com.chris64233.ambulancedispatch.repository.HospitalRepository;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -40,6 +43,7 @@ class DispatchServiceIntegrationTest {
 
     private static final String AREA = "东城区";
     private static final Set<String> CAPS = Set.of("AED", "VENTILATOR");
+    private static final Set<EmergencyType> TYPES = Set.of(EmergencyType.GENERAL);
 
     @Autowired private DispatchService dispatchService;
     @Autowired private CatalogService catalogService;
@@ -48,9 +52,14 @@ class DispatchServiceIntegrationTest {
     @Autowired private CrewRepository crewRepository;
     @Autowired private EmergencyEventRepository eventRepository;
     @Autowired private DispatchRepository dispatchRepository;
+    @Autowired private HospitalRepository hospitalRepository;
 
     private String bizNo() {
         return "BIZ-" + UUID.randomUUID();
+    }
+
+    private Long hospital(int capacity) {
+        return fixtures.hospital("医院" + UUID.randomUUID(), TYPES, capacity);
     }
 
     // ------------------------------------------------------------------
@@ -64,7 +73,7 @@ class DispatchServiceIntegrationTest {
         Long event = fixtures.event("东单", AREA, Priority.NORMAL, CAPS);
 
         DispatchResponse resp = dispatchService.dispatch(
-                new DispatchRequest(bizNo(), event, amb, crew));
+                new DispatchRequest(bizNo(), event, amb, crew, hospital(10)));
 
         assertThat(resp.status()).isEqualTo(DispatchStatus.EN_ROUTE.name());
         assertThat(resp.preemptionRootId()).isEqualTo(resp.id());
@@ -83,7 +92,7 @@ class DispatchServiceIntegrationTest {
         Long event = fixtures.event("东单", AREA, Priority.NORMAL, CAPS);
 
         assertThatThrownBy(() -> dispatchService.dispatch(
-                new DispatchRequest(bizNo(), event, amb, crew)))
+                new DispatchRequest(bizNo(), event, amb, crew, hospital(10))))
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(ErrorCode.SERVICE_AREA_MISMATCH);
@@ -102,7 +111,7 @@ class DispatchServiceIntegrationTest {
         Long event = fixtures.event("东单", AREA, Priority.NORMAL, CAPS);
 
         assertThatThrownBy(() -> dispatchService.dispatch(
-                new DispatchRequest(bizNo(), event, amb, crew)))
+                new DispatchRequest(bizNo(), event, amb, crew, hospital(10))))
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(ErrorCode.CAPABILITY_MISMATCH);
@@ -115,7 +124,7 @@ class DispatchServiceIntegrationTest {
         Long event = fixtures.event("东单", AREA, Priority.NORMAL, CAPS);
 
         assertThatThrownBy(() -> dispatchService.dispatch(
-                new DispatchRequest(bizNo(), event, amb, crew)))
+                new DispatchRequest(bizNo(), event, amb, crew, hospital(10))))
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(ErrorCode.CREW_OFF_DUTY);
@@ -138,7 +147,7 @@ class DispatchServiceIntegrationTest {
             Future<?> f1 = pool.submit(() -> {
                 try {
                     start.await();
-                    dispatchService.dispatch(new DispatchRequest(bizNo(), event1, amb, crew));
+                    dispatchService.dispatch(new DispatchRequest(bizNo(), event1, amb, crew, hospital(10)));
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     throw new RuntimeException(e);
@@ -147,7 +156,7 @@ class DispatchServiceIntegrationTest {
             Future<?> f2 = pool.submit(() -> {
                 try {
                     start.await();
-                    dispatchService.dispatch(new DispatchRequest(bizNo(), event2, amb, crew));
+                    dispatchService.dispatch(new DispatchRequest(bizNo(), event2, amb, crew, hospital(10)));
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     throw new RuntimeException(e);
@@ -198,11 +207,12 @@ class DispatchServiceIntegrationTest {
         Long crew = fixtures.crew("六组", CAPS, true);
         Long event = fixtures.event("东单", AREA, Priority.NORMAL, CAPS);
         String bizNo = bizNo();
+        Long hos = hospital(10);
 
         DispatchResponse first = dispatchService.dispatch(
-                new DispatchRequest(bizNo, event, amb, crew));
+                new DispatchRequest(bizNo, event, amb, crew, hos));
         DispatchResponse replay = dispatchService.dispatch(
-                new DispatchRequest(bizNo, event, amb, crew));
+                new DispatchRequest(bizNo, event, amb, crew, hos));
 
         assertThat(replay.id()).isEqualTo(first.id());
         assertThat(replay.replayed()).isTrue();
@@ -217,10 +227,10 @@ class DispatchServiceIntegrationTest {
         Long event2 = fixtures.event("东单2", AREA, Priority.NORMAL, CAPS);
         String bizNo = bizNo();
 
-        dispatchService.dispatch(new DispatchRequest(bizNo, event1, amb, crew));
+        dispatchService.dispatch(new DispatchRequest(bizNo, event1, amb, crew, hospital(10)));
 
         assertThatThrownBy(() -> dispatchService.dispatch(
-                new DispatchRequest(bizNo, event2, amb, crew)))
+                new DispatchRequest(bizNo, event2, amb, crew, hospital(10))))
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(ErrorCode.IDEMPOTENT_CONFLICT);
@@ -238,9 +248,9 @@ class DispatchServiceIntegrationTest {
         Long highEvent = fixtures.event("东单急", AREA, Priority.CRITICAL, CAPS);
 
         DispatchResponse low = dispatchService.dispatch(
-                new DispatchRequest(bizNo(), lowEvent, amb, crew));
+                new DispatchRequest(bizNo(), lowEvent, amb, crew, hospital(10)));
         DispatchResponse high = dispatchService.preempt(
-                new PreemptRequest(bizNo(), highEvent, low.id(), amb, crew));
+                new PreemptRequest(bizNo(), highEvent, low.id(), amb, crew, hospital(10)));
 
         assertThat(high.status()).isEqualTo(DispatchStatus.EN_ROUTE.name());
         assertThat(high.preemptedDispatchId()).isEqualTo(low.id());
@@ -268,11 +278,11 @@ class DispatchServiceIntegrationTest {
         Long highEvent = fixtures.event("东单急", AREA, Priority.CRITICAL, CAPS);
 
         DispatchResponse low = dispatchService.dispatch(
-                new DispatchRequest(bizNo(), lowEvent, amb, crew));
+                new DispatchRequest(bizNo(), lowEvent, amb, crew, hospital(10)));
         dispatchService.arrive(low.id());
 
         assertThatThrownBy(() -> dispatchService.preempt(
-                new PreemptRequest(bizNo(), highEvent, low.id(), amb, crew)))
+                new PreemptRequest(bizNo(), highEvent, low.id(), amb, crew, hospital(10))))
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(ErrorCode.DISPATCH_ALREADY_ARRIVED);
@@ -294,10 +304,10 @@ class DispatchServiceIntegrationTest {
         Long lowEvent = fixtures.event("东单低", AREA, Priority.LOW, CAPS);
 
         DispatchResponse normal = dispatchService.dispatch(
-                new DispatchRequest(bizNo(), normalEvent, amb, crew));
+                new DispatchRequest(bizNo(), normalEvent, amb, crew, hospital(10)));
 
         assertThatThrownBy(() -> dispatchService.preempt(
-                new PreemptRequest(bizNo(), lowEvent, normal.id(), amb, crew)))
+                new PreemptRequest(bizNo(), lowEvent, normal.id(), amb, crew, hospital(10))))
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(ErrorCode.PREEMPTION_NOT_HIGHER_PRIORITY);
@@ -312,10 +322,10 @@ class DispatchServiceIntegrationTest {
         Long highEvent = fixtures.event("东单急", AREA, Priority.CRITICAL, CAPS);
 
         DispatchResponse low = dispatchService.dispatch(
-                new DispatchRequest(bizNo(), lowEvent, amb, crew));
+                new DispatchRequest(bizNo(), lowEvent, amb, crew, hospital(10)));
 
         assertThatThrownBy(() -> dispatchService.preempt(
-                new PreemptRequest(bizNo(), highEvent, low.id(), amb, crew)))
+                new PreemptRequest(bizNo(), highEvent, low.id(), amb, crew, hospital(10))))
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(ErrorCode.CAPABILITY_MISMATCH);
@@ -337,19 +347,20 @@ class DispatchServiceIntegrationTest {
         Long lowEvent = fixtures.event("东单低", AREA, Priority.LOW, CAPS);
         Long highEvent = fixtures.event("东单急", AREA, Priority.CRITICAL, CAPS);
         DispatchResponse low = dispatchService.dispatch(
-                new DispatchRequest(bizNo(), lowEvent, amb, crew));
+                new DispatchRequest(bizNo(), lowEvent, amb, crew, hospital(10)));
 
         String bizNo = bizNo();
+        Long hos = hospital(10);
         DispatchResponse first = dispatchService.preempt(
-                new PreemptRequest(bizNo, highEvent, low.id(), amb, crew));
+                new PreemptRequest(bizNo, highEvent, low.id(), amb, crew, hos));
         DispatchResponse replay = dispatchService.preempt(
-                new PreemptRequest(bizNo, highEvent, low.id(), amb, crew));
+                new PreemptRequest(bizNo, highEvent, low.id(), amb, crew, hos));
         assertThat(replay.id()).isEqualTo(first.id());
         assertThat(replay.replayed()).isTrue();
 
         Long otherEvent = fixtures.event("另一急", AREA, Priority.HIGH, CAPS);
         assertThatThrownBy(() -> dispatchService.preempt(
-                new PreemptRequest(bizNo, otherEvent, low.id(), amb, crew)))
+                new PreemptRequest(bizNo, otherEvent, low.id(), amb, crew, hos)))
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(ErrorCode.IDEMPOTENT_CONFLICT);
@@ -366,7 +377,7 @@ class DispatchServiceIntegrationTest {
         Long lowEvent = fixtures.event("东单低", AREA, Priority.LOW, CAPS);
         Long highEvent = fixtures.event("东单急", AREA, Priority.CRITICAL, CAPS);
         DispatchResponse low = dispatchService.dispatch(
-                new DispatchRequest(bizNo(), lowEvent, amb, crew));
+                new DispatchRequest(bizNo(), lowEvent, amb, crew, hospital(10)));
 
         ExecutorService pool = Executors.newFixedThreadPool(2);
         CountDownLatch start = new CountDownLatch(1);
@@ -375,7 +386,7 @@ class DispatchServiceIntegrationTest {
                 try {
                     start.await();
                     dispatchService.preempt(new PreemptRequest(
-                            bizNo(), highEvent, low.id(), amb, crew));
+                            bizNo(), highEvent, low.id(), amb, crew, hospital(10)));
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     throw new RuntimeException(e);
@@ -428,7 +439,7 @@ class DispatchServiceIntegrationTest {
         Long crew = fixtures.crew("十三组", CAPS, true);
         Long event = fixtures.event("东单", AREA, Priority.NORMAL, CAPS);
         DispatchResponse d = dispatchService.dispatch(
-                new DispatchRequest(bizNo(), event, amb, crew));
+                new DispatchRequest(bizNo(), event, amb, crew, hospital(10)));
 
         dispatchService.arrive(d.id());
         DispatchResponse finished = dispatchService.complete(d.id());
@@ -458,7 +469,7 @@ class DispatchServiceIntegrationTest {
         Long crew = fixtures.crew("十四组", CAPS, true);
         Long event = fixtures.event("东单", AREA, Priority.NORMAL, CAPS);
         DispatchResponse d = dispatchService.dispatch(
-                new DispatchRequest(bizNo(), event, amb, crew));
+                new DispatchRequest(bizNo(), event, amb, crew, hospital(10)));
 
         DispatchResponse cancelled = dispatchService.cancel(d.id());
         assertThat(cancelled.status()).isEqualTo(DispatchStatus.CANCELLED.name());
@@ -469,7 +480,7 @@ class DispatchServiceIntegrationTest {
         Long amb2 = fixtures.ambulance("京A15", Set.of(AREA), CAPS);
         Long crew2 = fixtures.crew("十五组", CAPS, true);
         assertThatThrownBy(() -> dispatchService.dispatch(
-                new DispatchRequest(bizNo(), event, amb2, crew2)))
+                new DispatchRequest(bizNo(), event, amb2, crew2, hospital(10))))
                 .isInstanceOf(BusinessException.class)
                 .extracting(ex -> ((BusinessException) ex).getErrorCode())
                 .isEqualTo(ErrorCode.EVENT_TERMINAL);
@@ -482,16 +493,16 @@ class DispatchServiceIntegrationTest {
         Long lowEvent = fixtures.event("东单低", AREA, Priority.LOW, CAPS);
         Long highEvent = fixtures.event("东单急", AREA, Priority.CRITICAL, CAPS);
         DispatchResponse low = dispatchService.dispatch(
-                new DispatchRequest(bizNo(), lowEvent, amb, crew));
+                new DispatchRequest(bizNo(), lowEvent, amb, crew, hospital(10)));
         DispatchResponse high = dispatchService.preempt(
-                new PreemptRequest(bizNo(), highEvent, low.id(), amb, crew));
+                new PreemptRequest(bizNo(), highEvent, low.id(), amb, crew, hospital(10)));
 
         // 高优先级完成释放资源后，原待派遣事件可重新派遣
         dispatchService.arrive(high.id());
         dispatchService.complete(high.id());
 
         DispatchResponse redispatch = dispatchService.dispatch(
-                new DispatchRequest(bizNo(), lowEvent, amb, crew));
+                new DispatchRequest(bizNo(), lowEvent, amb, crew, hospital(10)));
         assertThat(redispatch.status()).isEqualTo(DispatchStatus.EN_ROUTE.name());
         // 重新派遣是一条全新的派遣单，自身成为新抢占链根；旧链仍可从被抢占单查询
         assertThat(redispatch.preemptionRootId()).isEqualTo(redispatch.id());
@@ -510,9 +521,9 @@ class DispatchServiceIntegrationTest {
         Long lowEvent = fixtures.event("东单低", AREA, Priority.LOW, CAPS);
         Long highEvent = fixtures.event("东单急", AREA, Priority.CRITICAL, CAPS);
         DispatchResponse low = dispatchService.dispatch(
-                new DispatchRequest(bizNo(), lowEvent, amb, crew));
+                new DispatchRequest(bizNo(), lowEvent, amb, crew, hospital(10)));
         DispatchResponse high = dispatchService.preempt(
-                new PreemptRequest(bizNo(), highEvent, low.id(), amb, crew));
+                new PreemptRequest(bizNo(), highEvent, low.id(), amb, crew, hospital(10)));
 
         EventDispatchDetailResponse detail = dispatchService.getEventDispatchDetail(highEvent);
         assertThat(detail.event().id()).isEqualTo(highEvent);
@@ -532,9 +543,9 @@ class DispatchServiceIntegrationTest {
         Long lowEvent = fixtures.event("东单低", AREA, Priority.LOW, CAPS);
         Long highEvent = fixtures.event("东单急", AREA, Priority.CRITICAL, CAPS);
         DispatchResponse low = dispatchService.dispatch(
-                new DispatchRequest(bizNo(), lowEvent, amb, crew));
+                new DispatchRequest(bizNo(), lowEvent, amb, crew, hospital(10)));
         DispatchResponse high = dispatchService.preempt(
-                new PreemptRequest(bizNo(), highEvent, low.id(), amb, crew));
+                new PreemptRequest(bizNo(), highEvent, low.id(), amb, crew, hospital(10)));
         dispatchService.arrive(high.id());
         dispatchService.complete(high.id());
 
@@ -556,11 +567,11 @@ class DispatchServiceIntegrationTest {
         Long e2 = fixtures.event("事件2", AREA, Priority.NORMAL, CAPS);
         Long e3 = fixtures.event("事件3", AREA, Priority.CRITICAL, CAPS);
 
-        DispatchResponse d1 = dispatchService.dispatch(new DispatchRequest(bizNo(), e1, amb, crew));
+        DispatchResponse d1 = dispatchService.dispatch(new DispatchRequest(bizNo(), e1, amb, crew, hospital(10)));
         DispatchResponse d2 = dispatchService.preempt(
-                new PreemptRequest(bizNo(), e2, d1.id(), amb, crew));
+                new PreemptRequest(bizNo(), e2, d1.id(), amb, crew, hospital(10)));
         DispatchResponse d3 = dispatchService.preempt(
-                new PreemptRequest(bizNo(), e3, d2.id(), amb, crew));
+                new PreemptRequest(bizNo(), e3, d2.id(), amb, crew, hospital(10)));
 
         List<PreemptionChainItemResponse> chainFromLatest =
                 dispatchService.getPreemptionChain(d3.id());
@@ -582,12 +593,12 @@ class DispatchServiceIntegrationTest {
         Long amb = fixtures.ambulance("京A20", Set.of(AREA), CAPS);
         Long crew = fixtures.crew("二十组", CAPS, true);
         Long event = fixtures.event("东单", AREA, Priority.NORMAL, CAPS);
-        dispatchService.dispatch(new DispatchRequest(bizNo(), event, amb, crew));
+        dispatchService.dispatch(new DispatchRequest(bizNo(), event, amb, crew, hospital(10)));
 
         Long amb2 = fixtures.ambulance("京A21", Set.of(AREA), CAPS);
         Long crew2 = fixtures.crew("二十一组", CAPS, true);
         assertThatThrownBy(() -> dispatchService.dispatch(
-                new DispatchRequest(bizNo(), event, amb2, crew2)))
+                new DispatchRequest(bizNo(), event, amb2, crew2, hospital(10))))
                 .isInstanceOf(BusinessException.class)
                 .extracting(ex -> ((BusinessException) ex).getErrorCode())
                 .isEqualTo(ErrorCode.DISPATCH_ALREADY_ACTIVE);

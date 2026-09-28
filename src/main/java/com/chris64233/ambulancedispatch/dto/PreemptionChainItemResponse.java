@@ -12,6 +12,7 @@ public record PreemptionChainItemResponse(
         String eventPriority,
         Long ambulanceId,
         Long crewId,
+        Long hospitalId,
         String status,
         Long preemptedDispatchId,
         Instant dispatchedAt) {

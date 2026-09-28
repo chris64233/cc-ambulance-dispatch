@@ -67,6 +67,22 @@ public class GlobalExceptionHandler {
                 "资源已被并发修改，请重试", request);
     }
 
+    /** 悲观锁等待超时或被选为死锁牺牲者：可安全重试，返回 409 而非 500。 */
+    @ExceptionHandler(org.springframework.dao.PessimisticLockingFailureException.class)
+    public ResponseEntity<ErrorResponse> handlePessimisticLock(
+            org.springframework.dao.PessimisticLockingFailureException ex, HttpServletRequest request) {
+        return build(HttpStatus.CONFLICT, ErrorCode.RESOURCE_UNAVAILABLE.getCode(),
+                "资源竞争冲突，请重试", request);
+    }
+
+    /** 唯一约束等在提交时才触发的并发写入冲突（如同名医院/车辆/救护组、重复业务号）。 */
+    @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)
+    public ResponseEntity<ErrorResponse> handleDataIntegrity(
+            org.springframework.dao.DataIntegrityViolationException ex, HttpServletRequest request) {
+        return build(HttpStatus.CONFLICT, ErrorCode.DUPLICATE_RESOURCE.getCode(),
+                "数据唯一性冲突，资源可能已被并发创建: " + request.getRequestURI(), request);
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleUnexpected(Exception ex, HttpServletRequest request) {
         return build(HttpStatus.INTERNAL_SERVER_ERROR, ErrorCode.INTERNAL_ERROR.getCode(),

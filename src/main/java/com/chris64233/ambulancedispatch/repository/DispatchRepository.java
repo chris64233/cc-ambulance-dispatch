@@ -16,11 +16,13 @@ public interface DispatchRepository extends JpaRepository<Dispatch, Long> {
 
     List<Dispatch> findByPreemptionRootIdOrderByDispatchedAtAsc(Long rootId);
 
-    @Query("select d from Dispatch d join fetch d.event join fetch d.ambulance join fetch d.crew "
+    @Query("select d from Dispatch d join fetch d.event join fetch d.ambulance "
+            + "join fetch d.crew join fetch d.destinationHospital "
             + "where d.id = :id")
     Optional<Dispatch> findDetailedById(@Param("id") Long id);
 
-    @Query("select d from Dispatch d join fetch d.event join fetch d.ambulance join fetch d.crew "
+    @Query("select d from Dispatch d join fetch d.event join fetch d.ambulance "
+            + "join fetch d.crew join fetch d.destinationHospital "
             + "where d.bizNo = :bizNo")
     Optional<Dispatch> findDetailedByBizNo(@Param("bizNo") String bizNo);
 

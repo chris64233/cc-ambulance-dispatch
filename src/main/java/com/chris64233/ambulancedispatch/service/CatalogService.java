@@ -95,6 +95,9 @@ public class CatalogService {
                 request.location(),
                 request.serviceArea(),
                 request.priority() == null ? Priority.NORMAL : request.priority(),
+                request.emergencyType() == null
+                        ? com.chris64233.ambulancedispatch.domain.EmergencyType.GENERAL
+                        : request.emergencyType(),
                 required,
                 clock.instant()));
     }

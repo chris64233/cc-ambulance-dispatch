@@ -1,5 +1,6 @@
 package com.chris64233.ambulancedispatch.dto;
 
+import com.chris64233.ambulancedispatch.domain.EmergencyType;
 import com.chris64233.ambulancedispatch.domain.Priority;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -9,5 +10,6 @@ public record CreateEventRequest(
         @NotBlank String location,
         @NotBlank String serviceArea,
         @NotNull Priority priority,
+        EmergencyType emergencyType,
         Set<@NotBlank String> requiredCapabilities) {
 }

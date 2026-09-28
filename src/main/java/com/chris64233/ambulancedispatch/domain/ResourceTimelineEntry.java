@@ -34,6 +34,8 @@ public class ResourceTimelineEntry {
         ASSIGNED,
         /** 到达现场。 */
         ARRIVED,
+        /** 到达目的医院。 */
+        ARRIVED_HOSPITAL,
         /** 任务完成或取消，资源释放。 */
         RELEASED,
         /** 被抢占，资源从原派遣释放并立刻进入下一条 ASSIGNED。 */
