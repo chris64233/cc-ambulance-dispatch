@@ -91,9 +91,12 @@ public class CatalogService {
     public EmergencyEvent createEvent(CreateEventRequest request) {
         Set<String> required = request.requiredCapabilities() == null
                 ? Set.of() : Set.copyOf(request.requiredCapabilities());
+        String emergencyType = (request.emergencyType() == null || request.emergencyType().isBlank())
+                ? "GENERAL" : request.emergencyType();
         return eventRepository.save(new EmergencyEvent(
                 request.location(),
                 request.serviceArea(),
+                emergencyType,
                 request.priority() == null ? Priority.NORMAL : request.priority(),
                 required,
                 clock.instant()));

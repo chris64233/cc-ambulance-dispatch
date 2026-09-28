@@ -1,7 +1,9 @@
 package com.chris64233.ambulancedispatch.service;
 
+import com.chris64233.ambulancedispatch.dto.DivertRequest;
 import com.chris64233.ambulancedispatch.dto.DispatchRequest;
 import com.chris64233.ambulancedispatch.dto.PreemptRequest;
+import com.chris64233.ambulancedispatch.dto.RejectRequest;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -16,14 +18,28 @@ import org.springframework.stereotype.Component;
 public class RequestFingerprint {
 
     public String dispatch(DispatchRequest request) {
-        return sha256("DISPATCH|%s|%d|%d|%d".formatted(
-                request.bizNo(), request.eventId(), request.ambulanceId(), request.crewId()));
+        return sha256("DISPATCH|%s|%d|%d|%d|%d".formatted(
+                request.bizNo(), request.eventId(), request.ambulanceId(),
+                request.crewId(), request.hospitalId()));
     }
 
     public String preempt(PreemptRequest request) {
-        return sha256("PREEMPT|%s|%d|%d|%d|%d".formatted(
+        return sha256("PREEMPT|%s|%d|%d|%d|%d|%d".formatted(
                 request.bizNo(), request.newEventId(), request.targetDispatchId(),
-                request.ambulanceId(), request.crewId()));
+                request.ambulanceId(), request.crewId(), request.hospitalId()));
+    }
+
+    public String divert(DivertRequest request) {
+        return sha256("DIVERT|%s|%d|%d|%d|%s|%s".formatted(
+                request.bizNo(), request.dispatchId(), request.fromHospitalId(),
+                request.toHospitalId(), request.reason(),
+                request.reasonDetail() == null ? "" : request.reasonDetail()));
+    }
+
+    public String reject(RejectRequest request) {
+        return sha256("REJECT|%s|%d|%d|%s".formatted(
+                request.bizNo(), request.dispatchId(), request.hospitalId(),
+                request.reasonDetail()));
     }
 
     private String sha256(String input) {

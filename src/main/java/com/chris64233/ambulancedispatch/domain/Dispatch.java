@@ -23,6 +23,7 @@ import java.time.Instant;
 @Table(name = "dispatch_record", indexes = {
         @Index(name = "idx_dispatch_biz_no", columnList = "bizNo", unique = true),
         @Index(name = "idx_dispatch_event", columnList = "event_id"),
+        @Index(name = "idx_dispatch_hospital", columnList = "hospital_id"),
         @Index(name = "idx_dispatch_preempt_root", columnList = "preemption_root_id")
 })
 public class Dispatch {
@@ -50,6 +51,11 @@ public class Dispatch {
     @JoinColumn(name = "crew_id", nullable = false)
     private Crew crew;
 
+    /** 当前目的医院。改派成功时原地切换为新医院，保证一条派遣的目的地唯一。 */
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "hospital_id", nullable = false)
+    private Hospital hospital;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
     private DispatchStatus status = DispatchStatus.EN_ROUTE;
@@ -69,6 +75,9 @@ public class Dispatch {
 
     private Instant arrivedAt;
 
+    /** 到达目的医院的时刻；非空后不可再改派。 */
+    private Instant arrivedAtHospitalAt;
+
     private Instant finishedAt;
 
     @Version
@@ -78,13 +87,14 @@ public class Dispatch {
     }
 
     public Dispatch(String bizNo, String requestFingerprint, EmergencyEvent event,
-                    Ambulance ambulance, Crew crew, Dispatch preemptionRoot,
+                    Ambulance ambulance, Crew crew, Hospital hospital, Dispatch preemptionRoot,
                     Dispatch preemptedDispatch, Instant dispatchedAt) {
         this.bizNo = bizNo;
         this.requestFingerprint = requestFingerprint;
         this.event = event;
         this.ambulance = ambulance;
         this.crew = crew;
+        this.hospital = hospital;
         this.preemptionRoot = preemptionRoot;
         this.preemptedDispatch = preemptedDispatch;
         this.dispatchedAt = dispatchedAt;
@@ -112,6 +122,14 @@ public class Dispatch {
 
     public Crew getCrew() {
         return crew;
+    }
+
+    public Hospital getHospital() {
+        return hospital;
+    }
+
+    public void setHospital(Hospital hospital) {
+        this.hospital = hospital;
     }
 
     public DispatchStatus getStatus() {
@@ -144,6 +162,14 @@ public class Dispatch {
 
     public void setArrivedAt(Instant arrivedAt) {
         this.arrivedAt = arrivedAt;
+    }
+
+    public Instant getArrivedAtHospitalAt() {
+        return arrivedAtHospitalAt;
+    }
+
+    public void setArrivedAtHospitalAt(Instant arrivedAtHospitalAt) {
+        this.arrivedAtHospitalAt = arrivedAtHospitalAt;
     }
 
     public Instant getFinishedAt() {

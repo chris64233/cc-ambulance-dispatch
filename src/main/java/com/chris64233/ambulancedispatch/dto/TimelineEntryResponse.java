@@ -8,6 +8,8 @@ public record TimelineEntryResponse(
         Long resourceId,
         Long dispatchId,
         String eventId,
+        Long hospitalId,
         String action,
+        String note,
         Instant occurredAt) {
 }

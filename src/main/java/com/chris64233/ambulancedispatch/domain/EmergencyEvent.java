@@ -34,6 +34,10 @@ public class EmergencyEvent {
     @Column(nullable = false)
     private String serviceArea;
 
+    /** 急救类型（如 TRAUMA / CARDIAC / GENERAL），目的医院必须在可接收类型中包含该类型。 */
+    @Column(nullable = false)
+    private String emergencyType;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
     private Priority priority;
@@ -58,8 +62,14 @@ public class EmergencyEvent {
 
     public EmergencyEvent(String location, String serviceArea, Priority priority,
                           Set<String> requiredCapabilities, Instant createdAt) {
+        this(location, serviceArea, "GENERAL", priority, requiredCapabilities, createdAt);
+    }
+
+    public EmergencyEvent(String location, String serviceArea, String emergencyType,
+                          Priority priority, Set<String> requiredCapabilities, Instant createdAt) {
         this.location = location;
         this.serviceArea = serviceArea;
+        this.emergencyType = emergencyType == null || emergencyType.isBlank() ? "GENERAL" : emergencyType;
         this.priority = priority;
         this.requiredCapabilities = new HashSet<>(requiredCapabilities);
         this.createdAt = createdAt;
@@ -75,6 +85,10 @@ public class EmergencyEvent {
 
     public String getServiceArea() {
         return serviceArea;
+    }
+
+    public String getEmergencyType() {
+        return emergencyType;
     }
 
     public Priority getPriority() {

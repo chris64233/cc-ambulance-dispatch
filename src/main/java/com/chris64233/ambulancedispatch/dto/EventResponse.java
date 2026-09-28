@@ -9,6 +9,7 @@ public record EventResponse(
         Long id,
         String location,
         String serviceArea,
+        String emergencyType,
         String priority,
         SortedSet<String> requiredCapabilities,
         String status,
@@ -16,6 +17,7 @@ public record EventResponse(
 
     public static EventResponse from(EmergencyEvent e) {
         return new EventResponse(e.getId(), e.getLocation(), e.getServiceArea(),
+                e.getEmergencyType(),
                 e.getPriority().name(),
                 new TreeSet<>(e.getRequiredCapabilities()),
                 e.getStatus().name(),

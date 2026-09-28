@@ -8,6 +8,7 @@ import java.util.Set;
 public record CreateEventRequest(
         @NotBlank String location,
         @NotBlank String serviceArea,
+        String emergencyType,
         @NotNull Priority priority,
         Set<@NotBlank String> requiredCapabilities) {
 }
